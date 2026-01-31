@@ -29,7 +29,7 @@ npx universal-llm-cli
 
 1.  **Start the CLI**:
     ```bash
-    ucli
+    unicli
     ```
 2.  **Configure (if not using default Ollama)**:
     ```bash

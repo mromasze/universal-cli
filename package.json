@@ -5,8 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "ucli": "./dist/index.js",
-    "universal-cli": "./dist/index.js"
+    "unicli": "./dist/index.js"
   },
   "files": [
     "dist",
