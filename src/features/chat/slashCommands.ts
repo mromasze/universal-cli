@@ -104,12 +104,8 @@ export class SlashCommandHandler {
                     configManager.setApiConfig({ apiKey: value });
                     console.log(theme.system(`Updated API Key.`));
                     break;
-                case 'system':
-                    configManager.setSystemPrompt(value);
-                    console.log(theme.system(`Updated System Prompt to: "${value}"`));
-                    break;
                 default:
-                    console.log(theme.error('Unknown setting. Use: url, model, key, system'));
+                    console.log(theme.error('Unknown setting. Use: url, model, key'));
             }
         }
     });

@@ -11,7 +11,7 @@ export interface UserConfig {
   language: Language;
   theme: ThemeName;
   api: ApiConfig;
-  systemPrompt: string;
+  isConfigured: boolean;
 }
 
 export interface Translation {

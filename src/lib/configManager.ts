@@ -16,7 +16,7 @@ const DEFAULT_CONFIG: UserConfig = {
     apiKey: 'ollama',
     model: 'llama3'
   },
-  systemPrompt: 'You are a helpful AI assistant in the terminal.'
+  isConfigured: false
 };
 
 class ConfigManager {
@@ -34,7 +34,9 @@ class ConfigManager {
         return DEFAULT_CONFIG;
       }
       const rawData = fs.readFileSync(CONFIG_PATH, 'utf-8');
-      return { ...DEFAULT_CONFIG, ...JSON.parse(rawData) };
+      // Migracja: jeśli stare configi mają systemPrompt, ignorujemy go
+      const loaded = JSON.parse(rawData);
+      return { ...DEFAULT_CONFIG, ...loaded };
     } catch (error) {
       console.error('Błąd ładowania konfiguracji, przywracanie domyślnej.', error);
       return DEFAULT_CONFIG;
@@ -68,8 +70,8 @@ class ConfigManager {
     this.saveConfig(this.config);
   }
 
-  public setSystemPrompt(prompt: string) {
-    this.config.systemPrompt = prompt;
+  public markAsConfigured() {
+    this.config.isConfigured = true;
     this.saveConfig(this.config);
   }
 

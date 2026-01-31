@@ -1,5 +1,6 @@
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import os from 'os';
 import chalk from 'chalk';
 import ora from 'ora';
 import OpenAI from 'openai';
@@ -8,12 +9,21 @@ import { SlashCommandHandler } from './slashCommands.js';
 import { configManager } from '../../lib/configManager.js';
 import { getTheme } from '../../lib/theme.js';
 import { FileSystemTools, tools as fsToolsDefinitions } from '../tools/fileSystem.js';
+import { runWizard } from '../onboarding/wizard.js';
+import { EXPERT_SYSTEM_PROMPT } from '../../lib/systemPrompt.js';
+import { checkUpdate } from '../../lib/updateChecker.js';
 
 export async function startChatSession(projectPath: string = '.') {
+  // Sprawdź czy skonfigurowany, jeśli nie -> uruchom wizard
+  if (!configManager.getConfig().isConfigured) {
+      await runWizard();
+  }
+
   const slashHandler = new SlashCommandHandler();
   const fsTools = new FileSystemTools(projectPath);
   
   await slashHandler.getWelcomeCommand()();
+  await checkUpdate(); // Sprawdź aktualizacje
   
   const theme = getTheme();
   console.log(theme.system(`📂 Working Directory: ${chalk.bold(fsTools.rootDir)}`));
@@ -24,25 +34,28 @@ export async function startChatSession(projectPath: string = '.') {
     return [hits.length ? hits : slashHandler.getCommandNames(), line];
   };
 
-  const rl = readline.createInterface({ input, output, completer });
-  
-  let conf = configManager.getConfig();
+  // Hardcoded System Prompt
   const history: any[] = [
-    { role: 'system', content: conf.systemPrompt }
+    { role: 'system', content: EXPERT_SYSTEM_PROMPT }
   ];
 
+  const username = os.userInfo().username || 'User';
+
   while (true) {
-    conf = configManager.getConfig();
+    const conf = configManager.getConfig();
     const client = createClient();
     const t = configManager.t.chat;
-    const currentTheme = getTheme(); // odświeżaj theme
+    const currentTheme = getTheme();
     
-    // Krótka informacja o ścieżce w znaku zachęty
     const pathInfo = projectPath !== '.' ? chalk.gray(`[${projectPath}] `) : '';
-    const promptPrefix = `${pathInfo}${currentTheme.user(`${t.user} > `)}`;
+    // Używamy nazwy użytkownika systemu zamiast tłumaczenia
+    const promptPrefix = `${pathInfo}${currentTheme.user(`${username} > `)}`;
+
+    const rl = readline.createInterface({ input, output, completer });
 
     try {
       const userMessage = await rl.question(promptPrefix);
+      rl.close();
 
       if (!userMessage.trim()) continue;
 
@@ -80,7 +93,8 @@ export async function startChatSession(projectPath: string = '.') {
                  process.stdout.write(currentTheme.ai(`${t.ai} > `));
                  isFirstChunk = false;
               }
-              process.stdout.write(delta.content);
+              // Kolorujemy każdy fragment odpowiedzi
+              process.stdout.write(currentTheme.ai(delta.content));
               fullContent += delta.content;
             }
 
@@ -93,15 +107,8 @@ export async function startChatSession(projectPath: string = '.') {
                    toolCallsBuffer[index] = { id: tc.id || '', type: tc.type || 'function', function: { name: '', arguments: '' } };
                  }
                  if (tc.id) toolCallsBuffer[index].id = tc.id;
-                 
-                 // Fix dla lokalnych modeli: Jeśli nazwa funkcji przychodzi w całości wielokrotnie
-                 if (tc.function?.name) {
-                     toolCallsBuffer[index].function.name += tc.function.name;
-                 }
-                 
-                 if (tc.function?.arguments) {
-                     toolCallsBuffer[index].function.arguments += tc.function.arguments;
-                 }
+                 if (tc.function?.name) toolCallsBuffer[index].function.name += tc.function.name;
+                 if (tc.function?.arguments) toolCallsBuffer[index].function.arguments += tc.function.arguments;
                }
             }
           }
@@ -126,7 +133,6 @@ export async function startChatSession(projectPath: string = '.') {
                  console.error(currentTheme.error(`Failed to parse arguments for ${rawName}`));
                }
 
-               // Wykonanie z sanitizacją nazwy (obsłużone w FileSystemTools.execute)
                console.log(currentTheme.highlight(` > ${rawName}(${JSON.stringify(args)})`));
                
                const result = await fsTools.execute(rawName, args);
@@ -145,15 +151,23 @@ export async function startChatSession(projectPath: string = '.') {
         } catch (apiError: any) {
           spinner.fail(t.error);
           console.error(currentTheme.error(`${t.apiErrorDetails}: ${apiError.message}`));
+          // W przypadku błędu API przerywamy pętlę narzędzi, ale NIE pętlę główną
           keepProcessing = false;
         }
       }
 
     } catch (error: any) {
+      rl.close();
+      // DEBUG: Sprawdźmy co naprawdę się dzieje
+      console.error(chalk.bgRed.white(` [CRITICAL ERROR] Code: ${error.code}, Message: ${error.message} `));
+      
       if (error.code === 'EPIPE' || error.message === 'closed') {
-          process.exit(0);
+          console.log(chalk.yellow('Próba reanimacji sesji...'));
+          // Restart loop
+      } else {
+          // If it's another error, maybe we should break or just log?
+          // For now, let's keep running to avoid crash.
       }
-      console.error(currentTheme.error(`\nUnexpected error: ${error.message}`));
     }
   }
 }
