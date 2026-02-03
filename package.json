@@ -15,6 +15,7 @@
   "scripts": {
     "start": "tsx src/index.ts chat",
     "dev": "tsx src/index.ts chat",
+    "web": "cd web && npm run dev",
     "build": "tsc",
     "prepublishOnly": "npm run build"
   },

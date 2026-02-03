@@ -125,12 +125,25 @@ export class FileSystemTools {
     else if (name.includes('read_file')) cleanName = 'read_file';
     else if (name.includes('list_files')) cleanName = 'list_files';
 
+    // Walidacja argumentów
+    if (!args || typeof args.path !== 'string') {
+      // Jeśli to list_files i brak ścieżki, możemy domyślnie przyjąć obecny katalog (opcjonalne, ale pomocne)
+      if (cleanName === 'list_files' && (!args || args.path === undefined)) {
+        args = { ...args, path: '.' };
+      } else {
+        return `Error: Missing or invalid 'path' argument for tool '${cleanName}'. Received: ${JSON.stringify(args)}`;
+      }
+    }
+
     switch (cleanName) {
       case 'list_files':
         return this.listFiles(args.path);
       case 'read_file':
         return this.readFile(args.path);
       case 'write_file':
+        if (typeof args.content !== 'string') {
+          return `Error: Missing or invalid 'content' argument for tool '${cleanName}'.`;
+        }
         return this.writeFile(args.path, args.content);
       default:
         return `Unknown tool: ${name}`;

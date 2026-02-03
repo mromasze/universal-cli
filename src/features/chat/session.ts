@@ -1,6 +1,7 @@
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import os from 'os';
+import path from 'path';
 import chalk from 'chalk';
 import ora from 'ora';
 import OpenAI from 'openai';
@@ -13,6 +14,24 @@ import { runWizard } from '../onboarding/wizard.js';
 import { EXPERT_SYSTEM_PROMPT } from '../../lib/systemPrompt.js';
 import { checkUpdate } from '../../lib/updateChecker.js';
 
+const MAX_CONTEXT_TOKENS = 128000; // Przybliżona wartość domyślna
+
+function stripAnsi(str: string): string {
+  return str.replace(/\x1B\[[0-9;]*[mK]/g, '');
+}
+
+function truncateMiddle(str: string, maxLength: number): string {
+  if (str.length <= maxLength) return str;
+  const partLength = Math.floor((maxLength - 3) / 2);
+  return str.substring(0, partLength) + '...' + str.substring(str.length - partLength);
+}
+
+// Prosta estymacja tokenów (4 znaki ~= 1 token)
+function estimateTokens(history: any[]): number {
+  const text = JSON.stringify(history);
+  return Math.ceil(text.length / 4);
+}
+
 export async function startChatSession(projectPath: string = '.') {
   // Sprawdź czy skonfigurowany, jeśli nie -> uruchom wizard
   if (!configManager.getConfig().isConfigured) {
@@ -20,14 +39,14 @@ export async function startChatSession(projectPath: string = '.') {
   }
 
   const slashHandler = new SlashCommandHandler();
+  // Resolve absolute path for display
+  const absolutePath = path.resolve(projectPath);
   const fsTools = new FileSystemTools(projectPath);
   
   await slashHandler.getWelcomeCommand()();
   await checkUpdate(); // Sprawdź aktualizacje
   
   const theme = getTheme();
-  console.log(theme.system(`📂 Working Directory: ${chalk.bold(fsTools.rootDir)}`));
-  console.log(theme.system(`   (All file operations will be relative to this path)\n`));
 
   const completer = (line: string): [string[], string] => {
     const hits = slashHandler.getCommandNames().filter((c) => c.startsWith(line));
@@ -35,8 +54,9 @@ export async function startChatSession(projectPath: string = '.') {
   };
 
   // Hardcoded System Prompt
+  const osInfo = `Operating System: ${os.type()} ${os.release()} (${os.platform()})`;
   const history: any[] = [
-    { role: 'system', content: EXPERT_SYSTEM_PROMPT }
+    { role: 'system', content: `${EXPERT_SYSTEM_PROMPT}\n\nUser Environment: ${osInfo}` }
   ];
 
   const username = os.userInfo().username || 'User';
@@ -47,15 +67,100 @@ export async function startChatSession(projectPath: string = '.') {
     const t = configManager.t.chat;
     const currentTheme = getTheme();
     
-    const pathInfo = projectPath !== '.' ? chalk.gray(`[${projectPath}] `) : '';
-    // Używamy nazwy użytkownika systemu zamiast tłumaczenia
-    const promptPrefix = `${pathInfo}${currentTheme.user(`${username} > `)}`;
+    // UI Elements Calculation
+    // Zmniejszamy szerokość o 2 znaki, aby uniknąć zawijania wierszy w niektórych terminalach,
+    // co psuje obliczenia pozycji kursora (moveCursor).
+    const width = (process.stdout.columns || 80) - 2;
+    const usedTokens = estimateTokens(history);
+    const usagePercent = Math.round((usedTokens / MAX_CONTEXT_TOKENS) * 100);
+    
+    // Status Line Calculation
+    // Format: PATH: <path>  USER: <user>  MODEL: <model>  CTX: <ctx>
+    // Labels + Spacing
+    const labelPath = 'PATH: ';
+    const labelUser = '  USER: ';
+    const labelModel = '  MODEL: ';
+    const labelCtx = '  CTX: ';
+    
+    const ctxString = `${usedTokens}/${MAX_CONTEXT_TOKENS} (${usagePercent}%)`;
+    
+    // Calculate static length (labels + other values)
+    const staticLength = labelPath.length + 
+                         labelUser.length + username.length + 
+                         labelModel.length + conf.api.model.length + 
+                         labelCtx.length + ctxString.length;
+                         
+    // Available space for path
+    const availableForPath = width - staticLength;
+    
+    // Truncate path if needed
+    const displayPath = availableForPath > 10 
+        ? truncateMiddle(absolutePath, availableForPath) 
+        : truncateMiddle(absolutePath, 10); // Fallback min length
+
+    const statusPath = chalk.blue(displayPath);
+    const statusUser = chalk.green(username);
+    const statusModel = chalk.magenta(conf.api.model);
+    const statusContext = chalk.yellow(ctxString);
+    
+    const statusLine = `${chalk.dim('PATH:')} ${statusPath}  ${chalk.dim('USER:')} ${statusUser}  ${chalk.dim('MODEL:')} ${statusModel}  ${chalk.dim('CTX:')} ${statusContext}`;
+
+    // Boxed Input
+    const topBorder = chalk.dim('╭' + '─'.repeat(width - 2) + '╮');
+    const bottomBorder = chalk.dim('╰' + '─'.repeat(width - 2) + '╯');
+    const promptPrefix = chalk.dim('│ ');
+
+    // Rendering Frame
+    if (process.stdout.isTTY) {
+        // 1. Reserve space (scrolls terminal if needed)
+        // Top + Input + Bottom + Status = 4 lines
+        process.stdout.write('\n'.repeat(4));
+        process.stdout.moveCursor(0, -4);
+
+        // 2. Draw UI
+        console.log(topBorder);
+        // Save cursor position at the start of the input line
+        process.stdout.write('\x1B7'); 
+        console.log(''); // Placeholder for input line
+        console.log(bottomBorder);
+        console.log(statusLine);
+        
+        // Restore cursor to the input line
+        process.stdout.write('\x1B8');
+    } else {
+        // Fallback for non-TTY
+        console.log(statusLine);
+        console.log(topBorder);
+    }
 
     const rl = readline.createInterface({ input, output, completer });
+    
+    // Obsługa Ctrl+C
+    rl.on('SIGINT', () => {
+        rl.close();
+        if (process.stdout.isTTY) {
+            // Move cursor down past the status line to exit cleanly
+            // Input -> Bottom -> Status -> Clean
+            process.stdout.moveCursor(0, 3);
+        }
+        console.log('\n' + chalk.yellow('Goodbye! 👋'));
+        process.exit(0);
+    });
 
     try {
       const userMessage = await rl.question(promptPrefix);
       rl.close();
+      
+      if (process.stdout.isTTY) {
+          // User hit enter. Cursor moves to next line (Bottom Border line).
+          // We need to jump over Bottom Border and Status Line.
+          // Current: Start of Bottom Border line.
+          // Target: Line AFTER Status Line.
+          // Move down 2 lines: 1 (Bottom) + 1 (Status)
+          process.stdout.moveCursor(0, 2);
+      } else {
+          console.log(bottomBorder);
+      }
 
       if (!userMessage.trim()) continue;
 
@@ -90,7 +195,8 @@ export async function startChatSession(projectPath: string = '.') {
             if (delta?.content) {
               if (isFirstChunk) {
                  spinner.stop();
-                 process.stdout.write(currentTheme.ai(`${t.ai} > `));
+                 // AI response header
+                 process.stdout.write('\n' + currentTheme.ai(`${t.ai} > `));
                  isFirstChunk = false;
               }
               // Kolorujemy każdy fragment odpowiedzi
