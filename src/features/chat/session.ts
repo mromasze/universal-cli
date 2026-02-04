@@ -68,81 +68,47 @@ export async function startChatSession(projectPath: string = '.') {
     const currentTheme = getTheme();
     
     // UI Elements Calculation
-    // Zmniejszamy szerokość o 2 znaki, aby uniknąć zawijania wierszy w niektórych terminalach,
-    // co psuje obliczenia pozycji kursora (moveCursor).
-    const width = (process.stdout.columns || 80) - 2;
+    const width = Math.max((process.stdout.columns || 80) - 2, 40);
     const usedTokens = estimateTokens(history);
     const usagePercent = Math.round((usedTokens / MAX_CONTEXT_TOKENS) * 100);
-    
-    // Status Line Calculation
-    // Format: PATH: <path>  USER: <user>  MODEL: <model>  CTX: <ctx>
-    // Labels + Spacing
-    const labelPath = 'PATH: ';
-    const labelUser = '  USER: ';
-    const labelModel = '  MODEL: ';
-    const labelCtx = '  CTX: ';
-    
+
     const ctxString = `${usedTokens}/${MAX_CONTEXT_TOKENS} (${usagePercent}%)`;
     
-    // Calculate static length (labels + other values)
-    const staticLength = labelPath.length + 
-                         labelUser.length + username.length + 
-                         labelModel.length + conf.api.model.length + 
-                         labelCtx.length + ctxString.length;
-                         
-    // Available space for path
-    const availableForPath = width - staticLength;
+    // Status Layout Calculation
+    // Static length of labels and fixed chars:
+    // "╭─ PATH: " (9) + " USER: " (7) + " MODEL: " (8) + " CTX: " (6) + " ─...╮" (variable)
+    // We estimate the static overhead to calculate available space for the path.
+    const staticTextLen = 9 + 7 + username.length + 8 + conf.api.model.length + 6 + ctxString.length + 2; 
+    const availableForPath = width - staticTextLen;
     
-    // Truncate path if needed
     const displayPath = availableForPath > 10 
         ? truncateMiddle(absolutePath, availableForPath) 
-        : truncateMiddle(absolutePath, 10); // Fallback min length
+        : truncateMiddle(path.basename(absolutePath), Math.max(10, availableForPath));
 
-    const statusPath = chalk.blue(displayPath);
-    const statusUser = chalk.green(username);
-    const statusModel = chalk.magenta(conf.api.model);
-    const statusContext = chalk.yellow(ctxString);
-    
-    const statusLine = `${chalk.dim('PATH:')} ${statusPath}  ${chalk.dim('USER:')} ${statusUser}  ${chalk.dim('MODEL:')} ${statusModel}  ${chalk.dim('CTX:')} ${statusContext}`;
+    // Calculate padding for the top border
+    const currentContentLen = 9 + displayPath.length + 7 + username.length + 8 + conf.api.model.length + 6 + ctxString.length + 1;
+    const paddingLen = Math.max(0, width - currentContentLen - 1);
 
-    // Boxed Input
-    const topBorder = chalk.dim('╭' + '─'.repeat(width - 2) + '╮');
+    // Boxed Input Components
+    const topBorder = chalk.dim('╭─') + 
+                      chalk.dim(' PATH: ') + chalk.blue(displayPath) +
+                      chalk.dim(' USER: ') + chalk.green(username) + 
+                      chalk.dim(' MODEL: ') + chalk.magenta(conf.api.model) +
+                      chalk.dim(' CTX: ') + chalk.yellow(ctxString) + 
+                      chalk.dim(' ' + '─'.repeat(paddingLen) + '╮');
+
     const bottomBorder = chalk.dim('╰' + '─'.repeat(width - 2) + '╯');
     const promptPrefix = chalk.dim('│ ');
 
-    // Rendering Frame
-    if (process.stdout.isTTY) {
-        // 1. Reserve space (scrolls terminal if needed)
-        // Top + Input + Bottom + Status = 4 lines
-        process.stdout.write('\n'.repeat(4));
-        process.stdout.moveCursor(0, -4);
-
-        // 2. Draw UI
-        console.log(topBorder);
-        // Save cursor position at the start of the input line
-        process.stdout.write('\x1B7'); 
-        console.log(''); // Placeholder for input line
-        console.log(bottomBorder);
-        console.log(statusLine);
-        
-        // Restore cursor to the input line
-        process.stdout.write('\x1B8');
-    } else {
-        // Fallback for non-TTY
-        console.log(statusLine);
-        console.log(topBorder);
-    }
+    // Rendering
+    console.log('');
+    console.log(topBorder);
 
     const rl = readline.createInterface({ input, output, completer });
     
     // Obsługa Ctrl+C
     rl.on('SIGINT', () => {
         rl.close();
-        if (process.stdout.isTTY) {
-            // Move cursor down past the status line to exit cleanly
-            // Input -> Bottom -> Status -> Clean
-            process.stdout.moveCursor(0, 3);
-        }
         console.log('\n' + chalk.yellow('Goodbye! 👋'));
         process.exit(0);
     });
@@ -150,17 +116,7 @@ export async function startChatSession(projectPath: string = '.') {
     try {
       const userMessage = await rl.question(promptPrefix);
       rl.close();
-      
-      if (process.stdout.isTTY) {
-          // User hit enter. Cursor moves to next line (Bottom Border line).
-          // We need to jump over Bottom Border and Status Line.
-          // Current: Start of Bottom Border line.
-          // Target: Line AFTER Status Line.
-          // Move down 2 lines: 1 (Bottom) + 1 (Status)
-          process.stdout.moveCursor(0, 2);
-      } else {
-          console.log(bottomBorder);
-      }
+      console.log(bottomBorder);
 
       if (!userMessage.trim()) continue;
 
