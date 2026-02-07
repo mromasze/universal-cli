@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@theme {
+  --font-mono: var(--font-mono);
+  
+  --color-neon-green: #22c55e;
+  --color-neon-dim: #15803d;
+  --color-dark-bg: #050505;
+  --color-terminal-gray: #1a1a1a;
+  
+  --animate-blink: blink 1s step-end infinite;
+  --animate-glitch: glitch 1s linear infinite;
+  
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+}
+
+/* Custom Scrollbar for that retro feel */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #050505; 
+}
+::-webkit-scrollbar-thumb {
+  background: #22c55e; 
+  border-radius: 0px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4ade80; 
+}
+
+/* Utilities */
+@layer utilities {
+  .text-shadow-neon {
+    text-shadow: 0 0 5px rgba(34, 197, 94, 0.5), 0 0 10px rgba(34, 197, 94, 0.3);
+  }
+  
+  .glass-panel {
+    @apply bg-zinc-900/80 backdrop-blur-sm border border-green-500/20 shadow-[0_0_15px_-3px_rgba(34,197,94,0.1)];
+  }
+}
+
+body {
+  overflow-x: hidden;
+}
