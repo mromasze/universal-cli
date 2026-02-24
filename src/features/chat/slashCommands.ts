@@ -40,7 +40,7 @@ export class SlashCommandHandler {
         const conf = configManager.getConfig();
 
         console.log(theme.system('='.repeat(50)));
-        console.log(theme.system.bold(` 🤖  ${t.title}  -  ${t.subtitle}`));
+        console.log(theme.system.bold(`  ${t.title}  -  ${t.subtitle}`));
         console.log(theme.system('='.repeat(50)));
         console.log(chalk.gray(` ${t.model}: ${chalk.white(conf.api.model)}`));
         console.log(chalk.gray(` ${t.url}:   ${chalk.white(conf.api.baseUrl)}`));
@@ -81,11 +81,11 @@ export class SlashCommandHandler {
     });
 
     this.commands.set('/set', {
-        description: () => 'Set config: /set [url|model|key|system] <value>',
+        description: () => 'Set config: /set [url|model|key|theme] <value>',
         execute: (args) => {
             const theme = getTheme();
             if (args.length < 2) {
-                 console.log(theme.error('Usage: /set [url|model|key|system] <value>'));
+                 console.log(theme.error('Usage: /set [url|model|key|theme] <value>'));
                  return;
             }
             const [key, ...valueParts] = args;
@@ -104,8 +104,12 @@ export class SlashCommandHandler {
                     configManager.setApiConfig({ apiKey: value });
                     console.log(theme.system(`Updated API Key.`));
                     break;
+                case 'theme':
+                    configManager.setTheme(value);
+                    console.log(theme.system(`Updated Theme to: ${value}`));
+                    break;
                 default:
-                    console.log(theme.error('Unknown setting. Use: url, model, key'));
+                    console.log(theme.error('Unknown setting. Use: url, model, key, theme'));
             }
         }
     });

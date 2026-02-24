@@ -10,7 +10,7 @@ const CONFIG_PATH = path.join(os.homedir(), CONFIG_FILENAME);
 
 const DEFAULT_CONFIG: UserConfig = {
   language: 'en', // Domyślny angielski dla "światowego" repo
-  theme: 'default',
+  theme: 'ocean',
   api: {
     baseUrl: 'http://localhost:11434/v1',
     apiKey: 'ollama',
@@ -81,6 +81,11 @@ class ConfigManager {
 
   public setLanguage(lang: Language) {
     this.config.language = lang;
+    this.saveConfig(this.config);
+  }
+
+  public setTheme(theme: any) {
+    this.config.theme = theme;
     this.saveConfig(this.config);
   }
 }

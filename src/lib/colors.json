@@ -1,0 +1,46 @@
+{
+  "palettes": {
+    "default": {
+      "user": "#32CD32",
+      "ai": "#FF00FF",
+      "system": "#0000FF",
+      "error": "#FF0000",
+      "highlight": "#00FFFF"
+    },
+    "matrix": {
+      "user": "#00FF00",
+      "ai": "#008000",
+      "system": "#FFFFFF",
+      "error": "#FF0000",
+      "highlight": "#00FF00"
+    },
+    "sunset": {
+      "user": "#FFFF00",
+      "ai": "#FF1493",
+      "system": "#FF4500",
+      "error": "#FF0000",
+      "highlight": "#FFA500"
+    },
+    "ocean": {
+      "user": "#1E90FF",
+      "ai": "#4682B4",
+      "system": "#00BFFF",
+      "error": "#DC143C",
+      "highlight": "#00CED1"
+    },
+    "dark_mode": {
+      "user": "#00FF00",
+      "ai": "#9D00FF",
+      "system": "#FFFF00",
+      "error": "#FF4500",
+      "highlight": "#00FFFF"
+    },
+    "monochrome": {
+      "user": "#000000",
+      "ai": "#4D4D4D",
+      "system": "#808080",
+      "error": "#000000",
+      "highlight": "#333333"
+    }
+  }
+}

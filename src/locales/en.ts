@@ -23,6 +23,6 @@ export const en: Translation = {
     welcomeDesc: 'Shows the welcome screen',
     configDesc: 'Edit configuration',
     availableCommands: 'Available commands',
-    byeMessage: '👋 See you later! Thanks for using Universal CLI.',
+    byeMessage: 'See you later! Thanks for using Universal CLI.',
   },
 };

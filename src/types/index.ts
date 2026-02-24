@@ -1,5 +1,5 @@
 export type Language = 'pl' | 'en';
-export type ThemeName = 'default' | 'matrix' | 'sunset';
+export type ThemeName = 'default' | 'matrix' | 'sunset' | 'ocean' | 'dark_mode' | 'monochrome';
 
 export interface ApiConfig {
   baseUrl: string;

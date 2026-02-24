@@ -23,6 +23,6 @@ export const pl: Translation = {
     welcomeDesc: 'Wyświetla ekran powitalny',
     configDesc: 'Edytuj konfigurację',
     availableCommands: 'Dostępne komendy',
-    byeMessage: '👋 Do zobaczenia! Dziękujemy za korzystanie z Universal CLI.',
+    byeMessage: 'Do zobaczenia! Dziękujemy za korzystanie z Universal CLI.',
   },
 };

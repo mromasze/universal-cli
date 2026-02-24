@@ -1,6 +1,6 @@
 {
   "name": "universal-llm-cli",
-  "version": "0.0.2",
+  "version": "0.0.4",
   "description": "A universal CLI for local LLMs (Ollama) and OpenAI-compatible APIs with filesystem access tools.",
   "type": "module",
   "main": "dist/index.js",

@@ -54,9 +54,9 @@ export async function startChatSession(projectPath: string = '.') {
   };
 
   // Hardcoded System Prompt
-  const osInfo = `Operating System: ${os.type()} ${os.release()} (${os.platform()})`;
+  const osInfo = `Operating System: ${os.type()} ${os.release()} (${os.platform()})\nShell: ${process.env.SHELL || 'Unknown'}\nNode.js Version: ${process.version}\nCurrent Working Directory: ${absolutePath}`;
   const history: any[] = [
-    { role: 'system', content: `${EXPERT_SYSTEM_PROMPT}\n\nUser Environment: ${osInfo}` }
+    { role: 'system', content: `${EXPERT_SYSTEM_PROMPT}\n\nSystem Context:\n${osInfo}` }
   ];
 
   const username = os.userInfo().username || 'User';
@@ -90,19 +90,22 @@ export async function startChatSession(projectPath: string = '.') {
     const paddingLen = Math.max(0, width - currentContentLen - 1);
 
     // Boxed Input Components
-    const topBorder = chalk.dim('╭─') + 
-                      chalk.dim(' PATH: ') + chalk.blue(displayPath) +
-                      chalk.dim(' USER: ') + chalk.green(username) + 
-                      chalk.dim(' MODEL: ') + chalk.magenta(conf.api.model) +
-                      chalk.dim(' CTX: ') + chalk.yellow(ctxString) + 
-                      chalk.dim(' ' + '─'.repeat(paddingLen) + '╮');
+    const topBorder = currentTheme.system.dim('╭─') + 
+                      currentTheme.system.dim(' PATH: ') + currentTheme.highlight(displayPath) +
+                      currentTheme.system.dim(' USER: ') + currentTheme.user(username) + 
+                      currentTheme.system.dim(' MODEL: ') + currentTheme.ai(conf.api.model) +
+                      currentTheme.system.dim(' CTX: ') + currentTheme.system(ctxString) + 
+                      currentTheme.system.dim(' ' + '─'.repeat(paddingLen) + '╮');
 
-    const bottomBorder = chalk.dim('╰' + '─'.repeat(width - 2) + '╯');
-    const promptPrefix = chalk.dim('│ ');
+    const promptPrefix = currentTheme.system.dim('╰─> ');
 
     // Rendering
     console.log('');
     console.log(topBorder);
+    
+    // Wymuś przewinięcie terminala, co naprawia ucięty kursor i brak odstępu
+    console.log('');
+    process.stdout.write('\\x1b[1A');
 
     const rl = readline.createInterface({ input, output, completer });
     
@@ -116,7 +119,6 @@ export async function startChatSession(projectPath: string = '.') {
     try {
       const userMessage = await rl.question(promptPrefix);
       rl.close();
-      console.log(bottomBorder);
 
       if (!userMessage.trim()) continue;
 
@@ -128,8 +130,25 @@ export async function startChatSession(projectPath: string = '.') {
       history.push({ role: 'user', content: userMessage });
       
       let keepProcessing = true;
+      let toolLoopCount = 0;
+      const MAX_TOOL_LOOPS = 40;
+      let lastToolCallSignature = '';
+      let consecutiveIdenticalCalls = 0;
       
       while (keepProcessing) {
+        toolLoopCount++;
+        if (toolLoopCount > MAX_TOOL_LOOPS) {
+            console.log(currentTheme.error(`\n[System] Maximum tool execution loop limit reached (${MAX_TOOL_LOOPS}). Interrupting to prevent infinite loops.`));
+            history.push({ role: 'system', content: `Error: You have reached the maximum number of consecutive tool calls (${MAX_TOOL_LOOPS}). Please stop calling tools and provide a summary of what you found or ask the user for clarification.` });
+            break;
+        }
+
+        if (consecutiveIdenticalCalls > 3) {
+            console.log(currentTheme.error(`\n[System] Detected identical consecutive tool calls. Interrupting to prevent infinite loops.`));
+            history.push({ role: 'system', content: `Error: You are making the exact same tool calls repeatedly. Please stop calling tools and provide a summary of what you found or ask the user for clarification.` });
+            break;
+        }
+
         const spinner = ora(t.generating).start();
 
         try {
@@ -164,13 +183,40 @@ export async function startChatSession(projectPath: string = '.') {
                if (isFirstChunk) { spinner.text = 'Analyzing...'; isFirstChunk = false; }
                
                for (const tc of delta.tool_calls) {
-                 const index = tc.index;
-                 if (!toolCallsBuffer[index]) {
-                   toolCallsBuffer[index] = { id: tc.id || '', type: tc.type || 'function', function: { name: '', arguments: '' } };
+                 const streamIndex = tc.index ?? 0;
+                 let targetEntry = undefined;
+
+                 if (tc.id) {
+                     targetEntry = toolCallsBuffer.find(t => t.id === tc.id);
                  }
-                 if (tc.id) toolCallsBuffer[index].id = tc.id;
-                 if (tc.function?.name) toolCallsBuffer[index].function.name += tc.function.name;
-                 if (tc.function?.arguments) toolCallsBuffer[index].function.arguments += tc.function.arguments;
+
+                 if (!targetEntry) {
+                     for (let i = toolCallsBuffer.length - 1; i >= 0; i--) {
+                         if (toolCallsBuffer[i]._streamIndex === streamIndex) {
+                             targetEntry = toolCallsBuffer[i];
+                             break;
+                         }
+                     }
+                     if (targetEntry && tc.id && targetEntry.id && targetEntry.id !== tc.id) {
+                         targetEntry = undefined;
+                     }
+                 }
+
+                 if (!targetEntry) {
+                     targetEntry = { id: tc.id || '', type: tc.type || 'function', function: { name: '', arguments: '' }, _streamIndex: streamIndex };
+                     toolCallsBuffer.push(targetEntry);
+                 }
+
+                 if (tc.id && !targetEntry.id) targetEntry.id = tc.id;
+                 
+                 if (tc.function?.name) {
+                   const currentName = targetEntry.function.name;
+                   const newNamePart = tc.function.name;
+                   if (currentName !== newNamePart && !currentName.endsWith(newNamePart)) {
+                     targetEntry.function.name += newNamePart;
+                   }
+                 }
+                 if (tc.function?.arguments) targetEntry.function.arguments += tc.function.arguments;
                }
             }
           }
@@ -181,8 +227,18 @@ export async function startChatSession(projectPath: string = '.') {
           const message: any = { role: 'assistant', content: fullContent || null };
           
           if (toolCallsBuffer.length > 0) {
-            message.tool_calls = toolCallsBuffer;
+            // Clean up internal properties like _streamIndex before adding to history
+            const cleanToolCalls = toolCallsBuffer.map(t => ({ id: t.id, type: t.type, function: t.function }));
+            message.tool_calls = cleanToolCalls;
             history.push(message);
+
+            const currentSignature = JSON.stringify(cleanToolCalls.map(t => t.function));
+            if (currentSignature === lastToolCallSignature) {
+                consecutiveIdenticalCalls++;
+            } else {
+                consecutiveIdenticalCalls = 0;
+                lastToolCallSignature = currentSignature;
+            }
 
             console.log(currentTheme.system(`[Executing ${toolCallsBuffer.length} tool(s)...]`));
 
@@ -195,7 +251,13 @@ export async function startChatSession(projectPath: string = '.') {
                  console.error(currentTheme.error(`Failed to parse arguments for ${rawName}`));
                }
 
-               console.log(currentTheme.highlight(` > ${rawName}(${JSON.stringify(args)})`));
+               const displayArgsObj = { ...args } as any;
+               for (const key in displayArgsObj) {
+                 if (typeof displayArgsObj[key] === 'string' && displayArgsObj[key].length > 50) {
+                   displayArgsObj[key] = displayArgsObj[key].substring(0, 50) + '...';
+                 }
+               }
+               console.log(currentTheme.highlight(` > ${rawName}(${JSON.stringify(displayArgsObj)})`));
                
                const result = await fsTools.execute(rawName, args);
                
